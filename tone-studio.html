@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rummikub Clock — Alarm Tone Studio</title>
+<style>
+  :root{
+    --bg:#E7E0CF; --panel:#F7F2E7; --panel-2:#EFE8D8;
+    --ink:#231F17; --muted:#6E6552; --line:#D8CFB8;
+    --accent:#1F5F8B; --accent-ink:#0F3A56;
+    --tile-black:#26221B; --tile-blue:#1F5F8B; --tile-red:#C0392B; --tile-orange:#D9861C; --tile-green:#2E7D57;
+    --shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 10px 22px -14px rgba(40,32,10,.5);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#16140E; --panel:#211E16; --panel-2:#1A180F;
+      --ink:#F1EBDB; --muted:#A79E8A; --line:#332F24;
+      --accent:#5AA6DA; --accent-ink:#BFE0F5;
+      --tile-black:#CFC7B4; --tile-blue:#5AA6DA; --tile-red:#E06A5C; --tile-orange:#E5A24A; --tile-green:#5FC191;
+      --shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 12px 26px -16px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#16140E; --panel:#211E16; --panel-2:#1A180F;
+    --ink:#F1EBDB; --muted:#A79E8A; --line:#332F24;
+    --accent:#5AA6DA; --accent-ink:#BFE0F5;
+    --tile-black:#CFC7B4; --tile-blue:#5AA6DA; --tile-red:#E06A5C; --tile-orange:#E5A24A; --tile-green:#5FC191;
+    --shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 12px 26px -16px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    padding:clamp(18px,4vw,44px);
+  }
+  .wrap{max-width:940px;margin:0 auto}
+
+  /* ---- header ---- */
+  header{display:flex;flex-wrap:wrap;align-items:flex-end;gap:20px;justify-content:space-between;margin-bottom:8px}
+  .brandline{display:flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .brandline .dot{width:7px;height:7px;border-radius:50%;background:var(--tile-red)}
+  h1{font-size:clamp(26px,4.4vw,40px);line-height:1.05;margin:6px 0 4px;letter-spacing:-.02em;text-wrap:balance;font-weight:800}
+  .sub{color:var(--muted);max-width:52ch;margin:0}
+
+  /* mock tile clock */
+  .tileclock{
+    display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:12px 16px;box-shadow:var(--shadow)
+  }
+  .tileclock .time{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:700;
+    font-size:30px;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--tile-red)}
+  .tileclock .lbl{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .ring{width:12px;height:12px;border-radius:50%;background:var(--tile-red);box-shadow:0 0 0 0 var(--tile-red)}
+  body.live .ring{animation:pulse 1s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--tile-red) 70%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
+  @media (prefers-reduced-motion:reduce){body.live .ring{animation:none}}
+
+  /* ---- controls bar ---- */
+  .bar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin:22px 0 10px;
+    padding:12px 16px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius)}
+  .bar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:10px;font-weight:600}
+  input[type=range]{accent-color:var(--accent);width:150px}
+  .stopall{margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    font:inherit;font-weight:600;font-size:13px;padding:8px 14px;border-radius:10px;cursor:pointer}
+  .stopall:hover{border-color:var(--accent)}
+  .stopall:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  h2.section{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    margin:30px 0 12px;font-weight:700;display:flex;align-items:center;gap:10px}
+  h2.section::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 16px 14px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+    display:flex;flex-direction:column;gap:10px;transition:border-color .15s,transform .15s}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--chip,var(--accent))}
+  .card.playing{border-color:var(--chip,var(--accent));transform:translateY(-1px)}
+  .card .head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .card .name{font-weight:800;font-size:18px;letter-spacing:-.01em}
+  .card .chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--chip,var(--accent));border:1px solid color-mix(in srgb,var(--chip,var(--accent)) 40%,var(--line));
+    padding:2px 7px;border-radius:999px;white-space:nowrap}
+  .card .desc{color:var(--muted);font-size:13.5px;margin:0;min-height:2.7em}
+  .card .recipe{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;overflow-x:auto;white-space:nowrap}
+  .play{margin-top:2px;border:none;cursor:pointer;font:inherit;font-weight:700;font-size:14px;
+    color:#fff;background:var(--chip,var(--accent));padding:10px 14px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;gap:9px;transition:filter .15s}
+  .play:hover{filter:brightness(1.06)}
+  .play:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .play .ico{width:0;height:0;border-style:solid;border-width:6px 0 6px 10px;border-color:transparent transparent transparent #fff}
+  .card.playing .play .ico{width:10px;height:10px;border:none;background:#fff;border-radius:2px}
+  .card .eq{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+  .card .eq i{width:3px;background:#fff;height:4px;border-radius:1px;opacity:.85}
+  .card.playing .eq i{animation:eq .6s ease-in-out infinite}
+  .card.playing .eq i:nth-child(2){animation-delay:.15s}
+  .card.playing .eq i:nth-child(3){animation-delay:.3s}
+  .card.playing .eq i:nth-child(4){animation-delay:.45s}
+  @keyframes eq{0%,100%{height:4px}50%{height:12px}}
+  @media (prefers-reduced-motion:reduce){.card.playing .eq i{animation:none;height:8px}}
+
+  footer{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+  footer b{color:var(--ink)}
+  .pill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="brandline"><span class="dot"></span> Rummikub Clock · Sound Lab</div>
+      <h1>Alarm Tone Studio</h1>
+      <p class="sub">Tap any tone to hear it loop the way it would when a player's time runs out. Five new candidates up top, your current three below for comparison.</p>
+    </div>
+    <div class="tileclock" title="Mock — this is what triggers the alarm">
+      <span class="ring"></span>
+      <div>
+        <div class="time">0:00</div>
+        <div class="lbl">Time's up</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="bar">
+    <label>Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.6"></label>
+    <span style="font-size:12.5px;color:var(--muted)">One plays at a time · auto-stops after a few seconds</span>
+    <button class="stopall" id="stopall">Stop</button>
+  </div>
+
+  <h2 class="section">New candidates</h2>
+  <div class="grid" id="grid-new"></div>
+
+  <h2 class="section">Current tones — for comparison</h2>
+  <div class="grid" id="grid-cur"></div>
+
+  <footer>
+    <p>Heard them all? Reply with the ones you like — e.g. <span class="pill">Chime + Marimba</span> — and I'll wire your picks into <b>index.html</b>, replacing the current Klaxon / Digital / Bell. Want to keep all three slots or change how many there are? Say so. You can also ask me to tweak any candidate (softer, faster, higher, longer).</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var ctx=null, master=null, comp=null;
+  var volEl=document.getElementById('vol');
+
+  function ensure(){
+    if(!ctx){
+      try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; }
+      comp=ctx.createDynamicsCompressor();          // safety limiter so nothing clips/harshes
+      comp.threshold.value=-14; comp.ratio.value=4; comp.attack.value=0.003; comp.release.value=0.15;
+      master=ctx.createGain(); master.gain.value=parseFloat(volEl.value);
+      master.connect(comp); comp.connect(ctx.destination);
+    }
+    if(ctx.state==='suspended'){ try{ctx.resume();}catch(e){} }
+    return ctx;
+  }
+  volEl.addEventListener('input',function(){ if(master) master.gain.value=parseFloat(volEl.value); });
+
+  // one enveloped oscillator note
+  function note(freq,opt){
+    opt=opt||{};
+    var type=opt.type||'sine', t=opt.t||0, dur=opt.dur||0.3, vol=opt.vol!=null?opt.vol:0.5;
+    var dest=opt.dest||master;
+    var o=ctx.createOscillator(), g=ctx.createGain();
+    o.type=type; o.frequency.value=freq; o.connect(g); g.connect(dest);
+    var s=ctx.currentTime+t;
+    g.gain.setValueAtTime(0.0001,s);
+    g.gain.exponentialRampToValueAtTime(vol,s+(opt.atk||0.008));
+    g.gain.exponentialRampToValueAtTime(0.0001,s+dur);
+    o.start(s); o.stop(s+dur+0.04);
+  }
+  function filt(type,freq){ var f=ctx.createBiquadFilter(); f.type=type; f.frequency.value=freq; f.connect(master); return f; }
+
+  // ---------- NEW CANDIDATES ----------
+  // Chime: struck bell built from inharmonic partials with long decays — real bell character.
+  function chime(){
+    var base=659.25; // E5
+    var parts=[[1,0.50,2.6],[2.00,0.26,2.0],[2.42,0.17,1.4],[3.0,0.12,1.1],[4.18,0.08,0.8]];
+    function hit(t){ parts.forEach(function(p){ note(base*p[0],{type:'sine',t:t,dur:p[2],vol:p[1],atk:0.004}); }); }
+    hit(0); hit(0.95);
+  }
+  // Marimba: warm wooden plucks, ascending triad, bright 4th partial for the mallet snap.
+  function marimba(){
+    var n=[523.25,659.25,783.99]; // C5 E5 G5
+    n.forEach(function(f,i){
+      note(f,{type:'sine',t:i*0.11,dur:0.42,vol:0.55,atk:0.004});
+      note(f*4,{type:'sine',t:i*0.11,dur:0.16,vol:0.13,atk:0.003});
+    });
+  }
+  // Rising Ping: three clean triangle notes climbing — friendly "your turn" alert.
+  function ping(){
+    var n=[587.33,739.99,987.77]; // D5 F#5 B5
+    n.forEach(function(f,i){ note(f,{type:'triangle',t:i*0.12,dur:0.32,vol:0.5,atk:0.006}); });
+  }
+  // Arcade: retro square arpeggio, low-passed so it's playful, not piercing.
+  function arcade(){
+    var f=filt('lowpass',2300);
+    var up=[440,554.37,659.25,880];
+    up.forEach(function(fr,i){ note(fr,{type:'square',t:i*0.07,dur:0.09,vol:0.22,dest:f,atk:0.004}); });
+    [659.25,440].forEach(function(fr,i){ note(fr,{type:'square',t:0.30+i*0.07,dur:0.10,vol:0.22,dest:f,atk:0.004}); });
+  }
+  // Warm Pulse: two detuned triangles swelling under a soft filter — calm but insistent.
+  function pulse(){
+    var f=filt('lowpass',1500);
+    [-2,2].forEach(function(det){
+      var o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='triangle'; o.frequency.value=330+det; o.connect(g); g.connect(f);
+      var s=ctx.currentTime;
+      g.gain.setValueAtTime(0.0001,s);
+      g.gain.exponentialRampToValueAtTime(0.5,s+0.13);
+      g.gain.exponentialRampToValueAtTime(0.0001,s+0.72);
+      o.start(s); o.stop(s+0.78);
+    });
+  }
+
+  // ---------- CURRENT (ported from index.html) ----------
+  function curKlaxon(){
+    var o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sawtooth'; o.frequency.value=950; o.connect(g); g.connect(master);
+    var s=ctx.currentTime;
+    g.gain.setValueAtTime(0.0001,s); g.gain.exponentialRampToValueAtTime(0.9,s+0.03);
+    o.start(s);
+    o.frequency.setValueAtTime(950,s); o.frequency.setValueAtTime(650,s+0.22); o.frequency.setValueAtTime(950,s+0.44);
+    g.gain.exponentialRampToValueAtTime(0.0001,s+0.63); o.stop(s+0.68);
+  }
+  function curDigital(){ note(1200,{type:'square',dur:0.09,vol:0.9}); note(1200,{type:'square',t:0.13,dur:0.09,vol:0.9}); }
+  function curBell(){ note(1000,{type:'sine',dur:0.5,vol:0.9}); note(900,{type:'sine',t:0.26,dur:0.45,vol:0.85}); }
+
+  var NEW=[
+    {id:'chime',   name:'Chime',       chip:'var(--tile-blue)',  tag:'bell',   fn:chime,   period:2200,
+     desc:'Struck glass bell with a long, clean ring. Attention-getting but pleasant.',
+     recipe:'5 inharmonic sine partials · 2.6s decay · struck ×2'},
+    {id:'marimba', name:'Marimba',     chip:'var(--tile-orange)',tag:'wood',   fn:marimba, period:1050,
+     desc:'Warm ascending wooden plucks — noticeable without being shrill.',
+     recipe:'C5·E5·G5 sine + 4× partial · 0.42s decay'},
+    {id:'ping',    name:'Rising Ping', chip:'var(--tile-green)', tag:'alert',  fn:ping,    period:1500,
+     desc:'Three bright notes climbing — a friendly "your turn" cue.',
+     recipe:'D5·F#5·B5 triangle · 0.32s each'},
+    {id:'arcade',  name:'Arcade',      chip:'var(--tile-red)',   tag:'retro',  fn:arcade,  period:950,
+     desc:'Playful retro arpeggio, low-passed so it never gets piercing.',
+     recipe:'square arp A4→A5→down · lowpass 2.3kHz'},
+    {id:'pulse',   name:'Warm Pulse',  chip:'var(--tile-black)', tag:'ambient',fn:pulse,   period:900,
+     desc:'A soft detuned swell that keeps nudging — calm but insistent.',
+     recipe:'2× detuned triangle 330Hz · lowpass swell'}
+  ];
+  var CUR=[
+    {id:'klaxon', name:'Klaxon (now)', chip:'var(--muted)', tag:'current', fn:curKlaxon, period:900,
+     desc:'Raw sawtooth at full volume snapping between pitches.', recipe:'sawtooth 950/650Hz · vol 0.9'},
+    {id:'digital',name:'Digital (now)',chip:'var(--muted)', tag:'current', fn:curDigital,period:550,
+     desc:'Square-wave double-beep — the piercing kitchen-timer screech.', recipe:'square 1200Hz ×2 · vol 0.9'},
+    {id:'bellold',name:'Bell (now)',   chip:'var(--muted)', tag:'current', fn:curBell,   period:1300,
+     desc:'Two pure sine tones — more dial tone than bell.', recipe:'sine 1000/900Hz · no partials'}
+  ];
+
+  var active=null; // {id, timer, card}
+  function stopAll(){
+    if(active){ clearTimeout(active.stopTimer); clearInterval(active.timer);
+      active.card.classList.remove('playing'); active=null; }
+    document.body.classList.remove('live');
+  }
+  function playDef(def,card){
+    var was = active && active.id===def.id;
+    stopAll();
+    if(was) return;              // second click on same card = stop
+    if(!ensure()) return;
+    def.fn();                    // immediate
+    var timer=setInterval(def.fn, def.period);
+    var stopTimer=setTimeout(stopAll, 4200);
+    active={id:def.id,timer:timer,stopTimer:stopTimer,card:card};
+    card.classList.add('playing');
+    document.body.classList.add('live');
+  }
+
+  function build(list,mount){
+    list.forEach(function(def){
+      var el=document.createElement('div');
+      el.className='card'; el.style.setProperty('--chip',def.chip);
+      el.innerHTML=
+        '<div class="head"><span class="name"></span><span class="chip"></span></div>'+
+        '<p class="desc"></p>'+
+        '<div class="recipe"></div>'+
+        '<button class="play"><span class="ico"></span>'+
+          '<span class="eq"><i></i><i></i><i></i><i></i></span><span class="ptxt">Play</span></button>';
+      el.querySelector('.name').textContent=def.name;
+      el.querySelector('.chip').textContent=def.tag;
+      el.querySelector('.desc').textContent=def.desc;
+      el.querySelector('.recipe').textContent=def.recipe;
+      var btn=el.querySelector('.play');
+      btn.addEventListener('click',function(){
+        var playing = active && active.id===def.id;
+        playDef(def,el);
+        // sync label across all cards
+        document.querySelectorAll('.ptxt').forEach(function(t){t.textContent='Play';});
+        if(!playing && active) el.querySelector('.ptxt').textContent='Stop';
+      });
+      mount.appendChild(el);
+    });
+  }
+  build(NEW,document.getElementById('grid-new'));
+  build(CUR,document.getElementById('grid-cur'));
+
+  document.getElementById('stopall').addEventListener('click',function(){
+    stopAll(); document.querySelectorAll('.ptxt').forEach(function(t){t.textContent='Play';});
+  });
+})();
+</script>
+
+</body>
+</html>
