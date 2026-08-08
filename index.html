@@ -597,105 +597,102 @@
     else statusEl.textContent = 'Tap the tile to start';
   }
 
-  let audioCtx = null;
+  let audioCtx = null, masterGain = null;
   function getAudioCtx() {
-    if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+      // Master chain: a compressor/limiter keeps the alarm loud but clip-free.
+      const comp = audioCtx.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+      masterGain = audioCtx.createGain(); masterGain.gain.value = 0.9;
+      masterGain.connect(comp); comp.connect(audioCtx.destination);
+    }
     if (audioCtx.state === 'suspended') { try { audioCtx.resume(); } catch (e) {} }
     return audioCtx;
   }
 
-  function playTone(type, freq, dur, vol) {
+  // One enveloped oscillator note, routed through the master chain.
+  // opts: { type, dur, vol, t (start offset), atk (attack), dest (node) }
+  function note(freq, opts) {
+    opts = opts || {};
     const ctx = getAudioCtx();
     if (!ctx) return;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type = type; o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-    o.start(); o.stop(ctx.currentTime + dur + 0.02);
+    o.type = opts.type || 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(opts.dest || masterGain);
+    const s = ctx.currentTime + (opts.t || 0);
+    const vol = opts.vol != null ? opts.vol : 0.5;
+    g.gain.setValueAtTime(0.0001, s);
+    g.gain.exponentialRampToValueAtTime(vol, s + (opts.atk || 0.008));
+    g.gain.exponentialRampToValueAtTime(0.0001, s + (opts.dur || 0.3));
+    o.start(s); o.stop(s + (opts.dur || 0.3) + 0.04);
+  }
+  function lowpass(freq) {
+    const ctx = getAudioCtx();
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = freq; f.connect(masterGain);
+    return f;
   }
 
   /* ---- Three alarm sound engines, each with a start/stop pair ---- */
   const SOUND_OPTIONS = [
-    { id: 'klaxon', label: 'Klaxon' },
-    { id: 'beep', label: 'Digital' },
-    { id: 'bell', label: 'Bell' }
+    { id: 'chime', label: 'Chime' },
+    { id: 'marimba', label: 'Marimba' },
+    { id: 'pulse', label: 'Warm Pulse' }
   ];
-  let alarmSound = 'klaxon';
+  let alarmSound = 'chime';
 
-  // Klaxon: one continuous sawtooth tone that snaps between two pitches.
-  let klaxonOsc = null, klaxonGain = null, klaxonStepInterval = null;
-  function startKlaxonEngine() {
+  // Chime: struck glass bell built from inharmonic partials with long decays.
+  let chimeInterval = null;
+  function chimeOnce() {
+    const base = 659.25; // E5
+    const parts = [[1, 0.50, 2.6], [2.00, 0.26, 2.0], [2.42, 0.17, 1.4], [3.0, 0.12, 1.1], [4.18, 0.08, 0.8]];
+    const hit = (t) => parts.forEach(p => note(base * p[0], { type: 'sine', dur: p[2], vol: p[1], t: t, atk: 0.004 }));
+    hit(0); hit(0.95);
+  }
+  function startChimeEngine() { chimeOnce(); chimeInterval = setInterval(chimeOnce, 2200); }
+  function stopChimeEngine() { clearInterval(chimeInterval); chimeInterval = null; }
+
+  // Marimba: warm ascending wooden plucks with a bright mallet partial.
+  let marimbaInterval = null;
+  function marimbaOnce() {
+    const n = [523.25, 659.25, 783.99]; // C5 E5 G5
+    n.forEach((f, i) => {
+      note(f, { type: 'sine', dur: 0.42, vol: 0.55, t: i * 0.11, atk: 0.004 });
+      note(f * 4, { type: 'sine', dur: 0.16, vol: 0.13, t: i * 0.11, atk: 0.003 });
+    });
+  }
+  function startMarimbaEngine() { marimbaOnce(); marimbaInterval = setInterval(marimbaOnce, 1050); }
+  function stopMarimbaEngine() { clearInterval(marimbaInterval); marimbaInterval = null; }
+
+  // Warm Pulse: two detuned triangles swelling under a soft low-pass filter.
+  let pulseInterval = null;
+  function pulseOnce() {
     const ctx = getAudioCtx();
     if (!ctx) return;
-    klaxonOsc = ctx.createOscillator();
-    klaxonGain = ctx.createGain();
-    klaxonOsc.type = 'sawtooth';
-    klaxonOsc.frequency.value = 900;
-    klaxonOsc.connect(klaxonGain);
-    klaxonGain.connect(ctx.destination);
-    klaxonGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    klaxonGain.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 0.05);
-    klaxonOsc.start();
-    let high = true;
-    klaxonStepInterval = setInterval(() => {
-      if (!klaxonOsc) return;
-      high = !high;
-      klaxonOsc.frequency.setValueAtTime(high ? 950 : 650, ctx.currentTime);
-    }, 220);
+    const f = lowpass(1500);
+    [-2, 2].forEach(det => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'triangle'; o.frequency.value = 330 + det;
+      o.connect(g); g.connect(f);
+      const s = ctx.currentTime;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.exponentialRampToValueAtTime(0.5, s + 0.13);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.72);
+      o.start(s); o.stop(s + 0.78);
+    });
   }
-  function stopKlaxonEngine() {
-    clearInterval(klaxonStepInterval); klaxonStepInterval = null;
-    if (klaxonOsc) {
-      try {
-        const ctx = getAudioCtx();
-        klaxonGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
-        klaxonOsc.stop(ctx.currentTime + 0.08);
-      } catch (e) {}
-      klaxonOsc = null; klaxonGain = null;
-    }
-  }
-  function klaxonPreview() {
-    const ctx = getAudioCtx();
-    if (!ctx) return;
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sawtooth'; o.frequency.value = 950;
-    o.connect(g); g.connect(ctx.destination);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.9, ctx.currentTime + 0.03);
-    o.start();
-    setTimeout(() => { try { o.frequency.setValueAtTime(650, ctx.currentTime); } catch (e) {} }, 220);
-    setTimeout(() => { try { o.frequency.setValueAtTime(950, ctx.currentTime); } catch (e) {} }, 440);
-    const stopTime = ctx.currentTime + 0.65;
-    g.gain.exponentialRampToValueAtTime(0.0001, stopTime);
-    o.stop(stopTime + 0.05);
-  }
+  function startPulseEngine() { pulseOnce(); pulseInterval = setInterval(pulseOnce, 900); }
+  function stopPulseEngine() { clearInterval(pulseInterval); pulseInterval = null; }
 
-  // Digital: rapid double-beep, sharp square wave, like a kitchen timer.
-  let beepInterval = null;
-  function digitalBeepOnce() {
-    playTone('square', 1200, 0.09, 0.9);
-    setTimeout(() => playTone('square', 1200, 0.09, 0.9), 130);
-  }
-  function startBeepEngine() { digitalBeepOnce(); beepInterval = setInterval(digitalBeepOnce, 550); }
-  function stopBeepEngine() { clearInterval(beepInterval); beepInterval = null; }
-
-  // Bell: warmer double-ring, like an old alarm clock.
-  let bellInterval = null;
-  function bellOnce() {
-    playTone('sine', 1000, 0.5, 0.9);
-    setTimeout(() => playTone('sine', 900, 0.45, 0.85), 260);
-  }
-  function startBellEngine() { bellOnce(); bellInterval = setInterval(bellOnce, 1300); }
-  function stopBellEngine() { clearInterval(bellInterval); bellInterval = null; }
+  function stopAllEngines() { stopChimeEngine(); stopMarimbaEngine(); stopPulseEngine(); }
 
   function previewSound(id) {
     getAudioCtx();
-    if (id === 'klaxon') klaxonPreview();
-    else if (id === 'beep') digitalBeepOnce();
-    else bellOnce();
+    if (id === 'marimba') marimbaOnce();
+    else if (id === 'pulse') pulseOnce();
+    else chimeOnce();
     if (navigator.vibrate) navigator.vibrate(120);
   }
 
@@ -704,9 +701,9 @@
 
   function startAlarm() {
     alarming = true;
-    if (alarmSound === 'beep') startBeepEngine();
-    else if (alarmSound === 'bell') startBellEngine();
-    else startKlaxonEngine();
+    if (alarmSound === 'marimba') startMarimbaEngine();
+    else if (alarmSound === 'pulse') startPulseEngine();
+    else startChimeEngine();
     if (navigator.vibrate) {
       navigator.vibrate([300, 100, 300]);
       alarmVibrateInterval = setInterval(() => navigator.vibrate([300, 100, 300]), 700);
@@ -716,7 +713,7 @@
   function stopAlarm() {
     if (!alarming) return;
     alarming = false;
-    stopKlaxonEngine(); stopBeepEngine(); stopBellEngine();
+    stopAllEngines();
     clearInterval(alarmVibrateInterval);
     alarmVibrateInterval = null;
     if (navigator.vibrate) navigator.vibrate(0);
