@@ -109,13 +109,19 @@
   .player-name::placeholder { color: #b3a894; font-weight: 600; }
   .win-total { font-size: 15px; font-weight: 800; color: var(--row-color, var(--orange)); min-width: 22px; text-align: right; }
 
+  .tally-header { display: flex; gap: 5px; flex-wrap: nowrap; padding: 0 14px 0 19px; margin-bottom: 4px; align-items: center; }
+  .tally-header-label { font-size: 9px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(243,236,220,0.45); margin-right: 2px; flex-shrink: 0; }
+  .tally-header-num { flex: 1; max-width: 28px; text-align: center; font-size: 10px; font-weight: 700; color: rgba(243,236,220,0.35); }
+  .tally-header-num.alt { color: rgba(243,236,220,0.55); }
+
   .tally { display: flex; gap: 5px; flex-wrap: nowrap; }
   .tally-box {
     flex: 1; aspect-ratio: 1; max-width: 28px; border-radius: 7px;
     background: rgba(0,0,0,0.07); border: 1.5px solid rgba(0,0,0,0.1);
     display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
-  .tally-box.filled { background: var(--row-color, var(--orange)); border-color: var(--row-color, var(--orange)); }
+  .tally-box.alt { background: rgba(0,0,0,0.12); }
+  .tally-box.filled { background: var(--box-color, var(--orange)); border-color: var(--box-color, var(--orange)); }
 
   /* ---------- Nav ---------- */
   #nav { display: flex; flex-shrink: 0; background: rgba(4,20,15,0.55); border-top: 1px solid rgba(255,255,255,0.08); padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -367,6 +373,7 @@
         <div class="header-btn" id="resetWinsBtn">Reset wins</div>
       </div>
     </div>
+    <div id="tallyHeader"></div>
     <div id="playerList"></div>
   </div>
 
@@ -1168,6 +1175,7 @@
 
   /* ===================== SCOREBOARD ===================== */
   const playerListEl = document.getElementById('playerList');
+  const tallyHeaderEl = document.getElementById('tallyHeader');
   const scoreSubEl = document.getElementById('scoreSub');
   const resetWinsBtn = document.getElementById('resetWinsBtn');
 
@@ -1194,12 +1202,36 @@
     catch (e) { scoreSubEl.textContent = "Couldn't save on this device — storage may be full or disabled"; }
   }
 
+  function renderTallyHeader() {
+    tallyHeaderEl.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'tally-header';
+    const label = document.createElement('div');
+    label.className = 'tally-header-label';
+    label.textContent = 'Game';
+    header.appendChild(label);
+    for (let j = 0; j < 10; j++) {
+      const num = document.createElement('div');
+      num.className = 'tally-header-num' + (j % 2 === 1 ? ' alt' : '');
+      num.textContent = j + 1;
+      header.appendChild(num);
+    }
+    tallyHeaderEl.appendChild(header);
+  }
+
+  function winnerNameForGame(j) {
+    const winner = players.find(p => p.wins[j]);
+    return winner ? (winner.name.trim() || 'that player') : null;
+  }
+
   function renderPlayers() {
+    renderTallyHeader();
     playerListEl.innerHTML = '';
     players.forEach((p, i) => {
+      const color = ACCENTS[i % ACCENTS.length];
       const row = document.createElement('div');
       row.className = 'player-row';
-      row.style.setProperty('--row-color', ACCENTS[i % ACCENTS.length]);
+      row.style.setProperty('--row-color', color);
 
       const top = document.createElement('div');
       top.className = 'player-row-top';
@@ -1240,8 +1272,39 @@
       tally.className = 'tally';
       p.wins.forEach((filled, j) => {
         const box = document.createElement('div');
-        box.className = 'tally-box' + (filled ? ' filled' : '');
-        box.addEventListener('click', () => { players[i].wins[j] = !players[i].wins[j]; savePlayers(); renderPlayers(); });
+        const isAlt = j % 2 === 1;
+        box.className = 'tally-box' + (filled ? ' filled' : (isAlt ? ' alt' : ''));
+        if (filled) box.style.setProperty('--box-color', color);
+        box.addEventListener('click', () => {
+          const thisPlayerName = p.name.trim() || `Player ${i + 1}`;
+          const gameNum = j + 1;
+          if (p.wins[j]) {
+            openConfirm({
+              title: `Remove win for Game ${gameNum}?`,
+              message: `This will unmark ${thisPlayerName}'s win for Game ${gameNum}.`,
+              okLabel: 'Remove',
+              onConfirm: () => { players[i].wins[j] = false; savePlayers(); renderPlayers(); }
+            });
+          } else {
+            const existingWinner = winnerNameForGame(j);
+            if (existingWinner) {
+              openConfirm({
+                title: `Reassign Game ${gameNum}?`,
+                message: `Game ${gameNum} is already marked as ${existingWinner}'s win. Give it to ${thisPlayerName} instead?`,
+                okLabel: 'Reassign',
+                onConfirm: () => {
+                  players.forEach((_, k) => { players[k].wins[j] = false; });
+                  players[i].wins[j] = true;
+                  savePlayers(); renderPlayers();
+                }
+              });
+            } else {
+              players.forEach((_, k) => { players[k].wins[j] = false; });
+              players[i].wins[j] = true;
+              savePlayers(); renderPlayers();
+            }
+          }
+        });
         tally.appendChild(box);
       });
 
