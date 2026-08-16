@@ -1083,9 +1083,26 @@
     render();
   }
 
-  function startTimer() { if (remaining === 0) remaining = duration; running = true; intervalId = setInterval(tick, 1000); render(); }
-  function pauseTimer() { running = false; clearInterval(intervalId); render(); }
-  function stopTimer() { running = false; clearInterval(intervalId); }
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); }
+    } catch (e) {}
+  }
+  function releaseWakeLock() {
+    try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      getAudioCtx();
+      if (running) requestWakeLock();
+    }
+  });
+
+  function startTimer() { if (remaining === 0) remaining = duration; running = true; intervalId = setInterval(tick, 1000); requestWakeLock(); render(); }
+  function pauseTimer() { running = false; clearInterval(intervalId); releaseWakeLock(); render(); }
+  function stopTimer() { running = false; clearInterval(intervalId); releaseWakeLock(); }
   function resetTimer() { stopTimer(); remaining = duration; pickColor(); render(); }
 
   let tapCount = 0, tapTimer = null;
